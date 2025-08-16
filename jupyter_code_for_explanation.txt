@@ -1,0 +1,242 @@
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
+
+plt.style.use("fivethirtyeight")
+-----------------------------------
+df = pd.read_csv("WA_Fn-UseC_-Telco-Customer-Churn.csv")
+df.head()
+-----------------------------------
+df.shape
+df.info()
+df.drop(columns = ['customerID'], inplace=True)
+df.head()
+-----------------------------------
+df.columns
+df['gender'].value_counts()
+df['SeniorCitizen'].unique()
+for col in df.columns:
+    if col not in ['tenure', 'MonthlyCharges', 'TotalCharges']:
+        print(col, df[col].unique())
+        print("-------------------------------------")
+------------------------------------------------------------------
+df.isnull().sum()
+for col in ['tenure', 'MonthlyCharges', 'TotalCharges']:
+    print(col, len(df[df[col]== " "]))
+    print("-------------------------------------")
+df['TotalCharges'] = df['TotalCharges'].replace({" ": "0.0"}).astype(float)
+df.info()
+-------------------------------------------------------------------------------
+df['Churn'].value_counts()
+df.shape
+df.columns
+----------------------------------------------
+df.describe().T
+def plot_distribution(df, column_name):
+    plt.figure(figsize=(12, 4))
+    plt.subplot(1, 2, 1)
+    sns.histplot(df[column_name], kde = True)
+    plt.title(f"Distribution of {column_name}")
+    
+    col_mean = df[column_name].mean()
+    col_median = df[column_name].median()
+    plt.axvline(col_mean, color = "red", linestyle="--", label="Mean")
+    plt.axvline(col_median, color = "blue", linestyle="--", label="Median")
+    
+    plt.legend()
+    
+    plt.subplot(1, 2, 2)
+    sns.boxplot(y  = df[column_name])
+    plt.title(f"Boxplot of {column_name}")
+    plt.show()
+---------------------------------------
+
+plot_distribution(df, "tenure")
+plot_distribution(df, "MonthlyCharges")
+-----------------------------------
+
+plot_distribution(df, "TotalCharges")
+-----------------------------------
+
+plt.figure(figsize = (8, 4))
+sns.heatmap(df[['tenure', 'MonthlyCharges', 'TotalCharges']].corr(), annot=True, cmap = "coolwarm", fmt = ".2f")
+plt.title("Correlation Matrix")
+plt.show()
+-----------------------------------
+
+categorical_cols = df.select_dtypes(include = "object").columns.to_list() + ['SeniorCitizen']
+-----------------------------------
+
+for col in categorical_cols:
+    plt.figure(figsize = (6, 4))
+#     sns.countplot(data = df, x = col, hue = 'Churn')
+    sns.countplot(x = df[col])
+    plt.title(f"{col} Distribution by Churn")
+    plt.show()
+
+-----------------------------------------------------------------
+
+# Label Encoding
+df['Churn'] = df['Churn'].replace({"Yes": 1, "No": 0})
+
+df.info()
+--------------------------------------------
+objects_columns = df.select_dtypes(include = "object").columns
+-----------------------------------
+
+objects_columns
+-----------------------------------
+
+encoders
+-----------------------------------
+
+df.info()
+-----------------------------------
+
+import pickle
+with open("encoder.pkl", "wb") as f:
+    pickle.dump(encoders, f)
+-----------------------------------
+
+from sklearn.preprocessing import StandardScaler
+
+-----------------------------------
+
+numerical_cols = ['tenure', 'MonthlyCharges', 'TotalCharges']
+scaler = StandardScaler()
+df[numerical_cols] = scaler.fit_transform(df[numerical_cols])
+-----------------------------------
+
+
+df['Churn'].value_counts()
+
+-----------------------------------
+
+from imblearn.over_sampling import SMOTE
+from sklearn.model_selection import train_test_split, cross_val_score, GridSearchCV
+from sklearn.ensemble import RandomForestClassifier
+from xgboost import XGBClassifier
+from sklearn.metrics import accuracy_score, confusion_matrix, classification_report, roc_auc_score
+-----------------------------------
+
+X = df.drop(columns = ['Churn'])
+y = df['Churn']
+-----------------------------------
+
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size = 0.2, random_state = 42)
+-----------------------------------
+
+y_train.value_counts()
+-----------------------------------
+
+smote = SMOTE(random_state = 42)
+-----------------------------------
+
+X_train_smote, y_train_smote = smote.fit_resample(X_train, y_train)
+
+-----------------------------------
+
+y_train_smote.value_counts()
+-----------------------------------
+
+models = {
+    "Random Forest": RandomForestClassifier(random_state=42),
+    "XGBoost": XGBClassifier(random_state=42)
+}
+
+
+hyperparameters = {
+    "Random Forest" :{
+        "n_estimators": [50,100, 200],
+        "max_depth": [5, 10, None],
+    },
+    "XGBoost":{
+        "learning_rate": [0.01, 0.1, 0.2],
+        "max_depth": [3, 5, 7],
+    }
+}
+
+-----------------------------------
+
+best_models = {}
+for model_name , model in models.items():
+    print(f"Tunning {model_name}......")
+    grid = GridSearchCV(estimator=model, param_grid=hyperparameters[model_name], cv=5, scoring = "accuracy")
+    grid.fit(X_train_smote, y_train_smote)
+    best_models[model_name] =grid.best_estimator_
+    print(f"Best parameters for {model_name} : {grid.best_params_}")
+    print(f"Best Accuracy for {model_name} : {grid.best_score_: .2f}\n")
+
+
+-----------------------------------
+
+best_models
+
+with open("best_model.pkl", "wb") as f:
+    pickle.dump(best_models['Random Forest'], f)
+-----------------------------------
+
+with open("scaler.pkl", "wb") as f:
+    pickle.dump(scaler, f)
+-----------------------------------
+
+y_test_pred = best_models['Random Forest'].predict(X_test)
+y_test_prob = best_models['Random Forest'].predict_proba(X_test)[:, 1]
+
+y_test_pred
+-----------------------------------
+
+y_test_prob
+
+print(f"Accuracy : ", accuracy_score(y_test, y_test_pred))
+print(f"ROC - AUC Score : ", roc_auc_score(y_test, y_test_pred))
+print(f"Confusion Matrix : \n", confusion_matrix(y_test, y_test_pred))
+print(f"Classification Report : \n", classification_report(y_test, y_test_pred))
+-----------------------------------
+
+with open("best_model.pkl", "rb") as f:
+    loaded_model = pickle.load(f)
+with open("encoder.pkl", "rb") as f:
+    encoders = pickle.load(f)
+with open("scaler.pkl", "rb") as f:
+    scaler_data =pickle.load(f)
+
+-----------------------------------
+
+with open("best_model.pkl", "rb") as f:
+    loaded_model = pickle.load(f)
+with open("encoder.pkl", "rb") as f:
+    encoders = pickle.load(f)
+with open("scaler.pkl", "rb") as f:
+    scaler_data =pickle.load(f)
+-----------------------------------
+
+df.columns
+-----------------------------------
+
+prediction, prob = make_prediction(example_input)
+
+-----------------------------------
+
+print(f"Prediction: {prediction}, Probability : {prob : .2f}")
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
